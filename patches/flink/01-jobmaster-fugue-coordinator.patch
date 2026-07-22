@@ -1,0 +1,49 @@
+diff --git a/flink-runtime/src/main/java/org/apache/flink/runtime/jobmaster/JobMaster.java b/flink-runtime/src/main/java/org/apache/flink/runtime/jobmaster/JobMaster.java
+index b80cab39..c612bf7e 100644
+--- a/flink-runtime/src/main/java/org/apache/flink/runtime/jobmaster/JobMaster.java
++++ b/flink-runtime/src/main/java/org/apache/flink/runtime/jobmaster/JobMaster.java
+@@ -85,6 +85,8 @@ import org.apache.flink.runtime.resourcemanager.ResourceManagerId;
+ import org.apache.flink.runtime.rpc.FatalErrorHandler;
+ import org.apache.flink.runtime.rpc.FencedRpcEndpoint;
+ import org.apache.flink.runtime.rpc.RpcService;
++import org.apache.flink.fugue.coordinator.planner.PolicyConfiguration;
++import org.apache.flink.fugue.coordinator.rpc.FugueCoordinatorEndpoint;
+ import org.apache.flink.runtime.rpc.RpcServiceUtils;
+ import org.apache.flink.runtime.scheduler.ExecutionGraphInfo;
+ import org.apache.flink.runtime.scheduler.SchedulerNG;
+@@ -227,6 +229,9 @@ public class JobMaster extends FencedRpcEndpoint<JobMasterId>
+ 
+     // ------------------------------------------------------------------------
+ 
++    /** Fugue migration coordinator (online elasticity); started in {@link #onStart()}. */
++    private FugueCoordinatorEndpoint fugueCoordinator;
++
+     public JobMaster(
+             RpcService rpcService,
+             JobMasterId jobMasterId,
+@@ -431,6 +436,12 @@ public class JobMaster extends FencedRpcEndpoint<JobMasterId>
+     protected void onStart() throws JobMasterException {
+         try {
+             startJobExecution();
++            // Fugue: start the online-elasticity migration coordinator for this job.
++            this.fugueCoordinator =
++                    new FugueCoordinatorEndpoint(
++                            getRpcService(), jobGraph.getJobID(), new PolicyConfiguration());
++            this.fugueCoordinator.start();
++            log.info("Started Fugue migration coordinator for job {}.", jobGraph.getJobID());
+         } catch (Exception e) {
+             final JobMasterException jobMasterException =
+                     new JobMasterException("Could not start the JobMaster.", e);
+@@ -447,6 +458,12 @@ public class JobMaster extends FencedRpcEndpoint<JobMasterId>
+                 jobGraph.getName(),
+                 jobGraph.getJobID());
+ 
++        // Fugue: stop the migration coordinator before the rest of the JobMaster shuts down.
++        if (fugueCoordinator != null) {
++            fugueCoordinator.closeAsync();
++            fugueCoordinator = null;
++        }
++
+         // make sure there is a graceful exit
+         return stopJobExecution(
+                         new FlinkException(

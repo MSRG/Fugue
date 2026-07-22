@@ -1,0 +1,46 @@
+diff --git a/flink-runtime/src/main/java/org/apache/flink/runtime/taskexecutor/TaskExecutor.java b/flink-runtime/src/main/java/org/apache/flink/runtime/taskexecutor/TaskExecutor.java
+index fc37a7f2..6638e99a 100644
+--- a/flink-runtime/src/main/java/org/apache/flink/runtime/taskexecutor/TaskExecutor.java
++++ b/flink-runtime/src/main/java/org/apache/flink/runtime/taskexecutor/TaskExecutor.java
+@@ -93,6 +93,7 @@ import org.apache.flink.runtime.rest.messages.ThreadDumpInfo;
+ import org.apache.flink.runtime.rpc.FatalErrorHandler;
+ import org.apache.flink.runtime.rpc.RpcEndpoint;
+ import org.apache.flink.runtime.rpc.RpcService;
++import org.apache.flink.fugue.integration.taskmanager.FugueTaskExecutorService;
+ import org.apache.flink.runtime.rpc.RpcServiceUtils;
+ import org.apache.flink.runtime.security.token.DelegationTokenReceiverRepository;
+ import org.apache.flink.runtime.shuffle.ShuffleDescriptor;
+@@ -291,6 +292,9 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
+ 
+     private final ShuffleDescriptorsCache shuffleDescriptorsCache;
+ 
++    /** Fugue per-TaskManager migration controller (online elasticity); started in onStart(). */
++    private FugueTaskExecutorService fugueController;
++
+     public TaskExecutor(
+             RpcService rpcService,
+             TaskManagerConfiguration taskManagerConfiguration,
+@@ -427,6 +431,10 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
+     public void onStart() throws Exception {
+         try {
+             startTaskExecutorServices();
++            // Fugue: start the per-TaskManager migration controller (online elasticity).
++            this.fugueController = new FugueTaskExecutorService(getRpcService(), getAddress());
++            this.fugueController.start();
++            log.info("Started Fugue migration controller on TaskExecutor {}.", getAddress());
+         } catch (Throwable t) {
+             final TaskManagerException exception =
+                     new TaskManagerException(
+@@ -476,6 +484,12 @@ public class TaskExecutor extends RpcEndpoint implements TaskExecutorGateway {
+     public CompletableFuture<Void> onStop() {
+         log.info("Stopping TaskExecutor {}.", getAddress());
+ 
++        // Fugue: stop the migration controller first.
++        if (fugueController != null) {
++            fugueController.closeAsync();
++            fugueController = null;
++        }
++
+         Throwable jobManagerDisconnectThrowable = null;
+ 
+         FlinkExpectedException cause =

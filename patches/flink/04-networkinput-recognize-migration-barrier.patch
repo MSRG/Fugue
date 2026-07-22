@@ -1,0 +1,24 @@
+diff --git a/flink-streaming-java/src/main/java/org/apache/flink/streaming/runtime/io/AbstractStreamTaskNetworkInput.java b/flink-streaming-java/src/main/java/org/apache/flink/streaming/runtime/io/AbstractStreamTaskNetworkInput.java
+index db5198bd..5ab3d5c3 100644
+--- a/flink-streaming-java/src/main/java/org/apache/flink/streaming/runtime/io/AbstractStreamTaskNetworkInput.java
++++ b/flink-streaming-java/src/main/java/org/apache/flink/streaming/runtime/io/AbstractStreamTaskNetworkInput.java
+@@ -33,6 +33,9 @@ import org.apache.flink.streaming.runtime.streamrecord.StreamElementSerializer;
+ import org.apache.flink.streaming.runtime.tasks.StreamTask.CanEmitBatchOfRecordsChecker;
+ import org.apache.flink.streaming.runtime.watermarkstatus.StatusWatermarkValve;
+ 
++import org.apache.flink.fugue.common.core.MigrationBarrier;
++import org.apache.flink.fugue.runtime.barrier.FugueBarrierDispatch;
++
+ import java.io.IOException;
+ import java.util.ArrayList;
+ import java.util.HashMap;
+@@ -183,6 +186,9 @@ public abstract class AbstractStreamTaskNetworkInput<
+             if (checkpointedInputGate.allChannelsRecovered()) {
+                 return DataInputStatus.END_OF_RECOVERY;
+             }
++        } else if (event instanceof MigrationBarrier) {
++            // Fugue: recognize the in-band migration barrier and record per-channel alignment.
++            FugueBarrierDispatch.onBarrier((MigrationBarrier) event, bufferOrEvent.getChannelInfo());
+         }
+         return DataInputStatus.MORE_AVAILABLE;
+     }

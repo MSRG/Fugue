@@ -1,0 +1,39 @@
+diff --git a/flink-streaming-java/src/main/java/org/apache/flink/streaming/runtime/tasks/StreamTask.java b/flink-streaming-java/src/main/java/org/apache/flink/streaming/runtime/tasks/StreamTask.java
+index cff785b2..91d75167 100644
+--- a/flink-streaming-java/src/main/java/org/apache/flink/streaming/runtime/tasks/StreamTask.java
++++ b/flink-streaming-java/src/main/java/org/apache/flink/streaming/runtime/tasks/StreamTask.java
+@@ -804,6 +804,26 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
+ 
+         // let the task do its work
+         getEnvironment().getMetricGroup().getIOMetricGroup().markTaskStart();
++
++        // --- Fugue: bind this subtask's name to its mailbox thread (so the in-band migration barrier
++        // is attributed to the right subtask in AbstractStreamTaskNetworkInput#processEvent), and
++        // register a barrier injector (the single-JVM stand-in for the coordinator->source RPC). ---
++        org.apache.flink.fugue.runtime.barrier.FugueBarrierDispatch.bindTaskName(getName());
++        org.apache.flink.fugue.runtime.barrier.FugueStreamTaskRegistry.register(
++                getName(),
++                barrier ->
++                        mainMailboxExecutor.execute(
++                                () -> {
++                                    // Fugue: install the routing flip in-band on the mailbox thread,
++                                    // then broadcast the barrier downstream. Records emitted before the
++                                    // barrier kept the old routing; records after take the override
++                                    // for the atomic cutover.
++                                    org.apache.flink.fugue.runtime.barrier.FugueRoutingOverrides
++                                            .applyFromBarrier(barrier);
++                                    operatorChain.broadcastEvent(barrier);
++                                },
++                                "fugue-inject-migration-barrier"));
++
+         runMailboxLoop();
+ 
+         // if this left the run() method cleanly despite the fact that this was canceled,
+@@ -860,6 +880,7 @@ public abstract class StreamTask<OUT, OP extends StreamOperator<OUT>>
+ 
+     protected void afterInvoke() throws Exception {
+         LOG.debug("Finished task {}", getName());
++        org.apache.flink.fugue.runtime.barrier.FugueStreamTaskRegistry.unregister(getName());
+         getCompletionFuture().exceptionally(unused -> null).join();
+ 
+         Set<CompletableFuture<Void>> terminationConditions = new HashSet<>();

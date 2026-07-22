@@ -1,0 +1,98 @@
+diff --git a/flink-runtime/src/main/java/org/apache/flink/runtime/state/AbstractKeyedStateBackend.java b/flink-runtime/src/main/java/org/apache/flink/runtime/state/AbstractKeyedStateBackend.java
+index f9c26725..40d4c698 100644
+--- a/flink-runtime/src/main/java/org/apache/flink/runtime/state/AbstractKeyedStateBackend.java
++++ b/flink-runtime/src/main/java/org/apache/flink/runtime/state/AbstractKeyedStateBackend.java
+@@ -460,4 +460,20 @@ public abstract class AbstractKeyedStateBackend<K>
+     public void setCurrentKeyGroupIndex(int currentKeyGroupIndex) {
+         keyContext.setCurrentKeyGroupIndex(currentKeyGroupIndex);
+     }
++
++    /**
++     * Fugue: host {@code keyGroup} on this backend in addition to its static {@link
++     * #getKeyGroupRange()}, so the target instance of an online migration can serve a key-group
++     * transferred to it during the atomic cutover. Delegates to the {@link InternalKeyContext}.
++     */
++    @Override
++    public void addHostedKeyGroup(int keyGroup) {
++        keyContext.addHostedKeyGroup(keyGroup);
++    }
++
++    /** Fugue: stop hosting a key-group previously added by {@link #addHostedKeyGroup(int)}. */
++    @Override
++    public void removeHostedKeyGroup(int keyGroup) {
++        keyContext.removeHostedKeyGroup(keyGroup);
++    }
+ }
+diff --git a/flink-runtime/src/main/java/org/apache/flink/runtime/state/heap/InternalKeyContext.java b/flink-runtime/src/main/java/org/apache/flink/runtime/state/heap/InternalKeyContext.java
+index 667f65fb..79af6b71 100644
+--- a/flink-runtime/src/main/java/org/apache/flink/runtime/state/heap/InternalKeyContext.java
++++ b/flink-runtime/src/main/java/org/apache/flink/runtime/state/heap/InternalKeyContext.java
+@@ -59,4 +59,15 @@ public interface InternalKeyContext<K> {
+      * @param currentKeyGroupIndex the current key group index to set to.
+      */
+     void setCurrentKeyGroupIndex(int currentKeyGroupIndex);
++
++    /**
++     * Fugue: host {@code keyGroup} on this backend <em>in addition to</em> its static {@link
++     * #getKeyGroupRange()} — the target instance of an online cross-range key-group migration.
++     * Default no-op (only the migration-capable {@link InternalKeyContextImpl}
++     * supports it).
++     */
++    default void addHostedKeyGroup(int keyGroup) {}
++
++    /** Fugue: stop hosting a key-group previously added by {@link #addHostedKeyGroup(int)}. */
++    default void removeHostedKeyGroup(int keyGroup) {}
+ }
+diff --git a/flink-runtime/src/main/java/org/apache/flink/runtime/state/heap/InternalKeyContextImpl.java b/flink-runtime/src/main/java/org/apache/flink/runtime/state/heap/InternalKeyContextImpl.java
+index 67e794ac..b28acb4f 100644
+--- a/flink-runtime/src/main/java/org/apache/flink/runtime/state/heap/InternalKeyContextImpl.java
++++ b/flink-runtime/src/main/java/org/apache/flink/runtime/state/heap/InternalKeyContextImpl.java
+@@ -24,6 +24,9 @@ import org.apache.flink.runtime.state.KeyGroupRangeOffsets;
+ import javax.annotation.Nonnegative;
+ import javax.annotation.Nonnull;
+ 
++import java.util.Set;
++import java.util.concurrent.ConcurrentHashMap;
++
+ /**
+  * The default {@link InternalKeyContext} implementation.
+  *
+@@ -40,6 +43,15 @@ public class InternalKeyContextImpl<K> implements InternalKeyContext<K> {
+     /** The key group of the currently active key. */
+     private int currentKeyGroupIndex;
+ 
++    /**
++     * Fugue: key-groups this backend hosts <em>in addition to</em> {@link #keyGroupRange} — the target
++     * of an online cross-range key-group migration. Read on the hot path
++     * ({@link #setCurrentKeyGroupIndex}) and written rarely at cutover from a control thread, so it is a
++     * concurrent set. Empty in the steady state, so the range guard below is unchanged for every
++     * backend that is not a live migration target.
++     */
++    private final Set<Integer> hostedKeyGroups = ConcurrentHashMap.newKeySet();
++
+     public InternalKeyContextImpl(
+             @Nonnull KeyGroupRange keyGroupRange, @Nonnegative int numberOfKeyGroups) {
+         this.keyGroupRange = keyGroupRange;
+@@ -73,10 +85,21 @@ public class InternalKeyContextImpl<K> implements InternalKeyContext<K> {
+ 
+     @Override
+     public void setCurrentKeyGroupIndex(int currentKeyGroupIndex) {
+-        if (!keyGroupRange.contains(currentKeyGroupIndex)) {
++        if (!keyGroupRange.contains(currentKeyGroupIndex)
++                && !hostedKeyGroups.contains(currentKeyGroupIndex)) {
+             throw KeyGroupRangeOffsets.newIllegalKeyGroupException(
+                     currentKeyGroupIndex, keyGroupRange);
+         }
+         this.currentKeyGroupIndex = currentKeyGroupIndex;
+     }
++
++    @Override
++    public void addHostedKeyGroup(int keyGroup) {
++        hostedKeyGroups.add(keyGroup);
++    }
++
++    @Override
++    public void removeHostedKeyGroup(int keyGroup) {
++        hostedKeyGroups.remove(keyGroup);
++    }
+ }

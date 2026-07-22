@@ -1,0 +1,16 @@
+diff --git a/flink-runtime/pom.xml b/flink-runtime/pom.xml
+index 41c132b3..db1a2450 100644
+--- a/flink-runtime/pom.xml
++++ b/flink-runtime/pom.xml
+@@ -303,6 +303,11 @@ under the License.
+ 			<artifactId>powermock-api-mockito2</artifactId>
+ 			<scope>test</scope>
+ 		</dependency>
++		<dependency>
++			<groupId>com.ververica</groupId>
++			<artifactId>frocksdbjni</artifactId>
++			<version>6.20.3-ververica-2.0</version>
++		</dependency>
+ 	</dependencies>
+ 
+ 	<build>

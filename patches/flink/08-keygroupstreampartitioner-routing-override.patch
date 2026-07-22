@@ -1,0 +1,21 @@
+diff --git a/flink-streaming-java/src/main/java/org/apache/flink/streaming/runtime/partitioner/KeyGroupStreamPartitioner.java b/flink-streaming-java/src/main/java/org/apache/flink/streaming/runtime/partitioner/KeyGroupStreamPartitioner.java
+index 5294aecc..13104398 100644
+--- a/flink-streaming-java/src/main/java/org/apache/flink/streaming/runtime/partitioner/KeyGroupStreamPartitioner.java
++++ b/flink-streaming-java/src/main/java/org/apache/flink/streaming/runtime/partitioner/KeyGroupStreamPartitioner.java
+@@ -60,8 +60,14 @@ public class KeyGroupStreamPartitioner<T, K> extends StreamPartitioner<T>
+             throw new RuntimeException(
+                     "Could not extract key from " + record.getInstance().getValue(), e);
+         }
+-        return KeyGroupRangeAssignment.assignKeyToParallelOperator(
+-                key, maxParallelism, numberOfChannels);
++        // Fugue: consult the migration routing override for this key's key-group (a single volatile
++        // read, no behaviour change, when no migration is active) for the atomic routing flip.
++        final int keyGroup = KeyGroupRangeAssignment.assignToKeyGroup(key, maxParallelism);
++        final int defaultChannel =
++                KeyGroupRangeAssignment.computeOperatorIndexForKeyGroup(
++                        maxParallelism, numberOfChannels, keyGroup);
++        return org.apache.flink.fugue.runtime.barrier.FugueRoutingOverrides.channelFor(
++                keyGroup, defaultChannel);
+     }
+ 
+     @Override

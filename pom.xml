@@ -1,0 +1,174 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+         http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>org.apache.flink.fugue</groupId>
+    <artifactId>fugue-parent</artifactId>
+    <version>1.0-SNAPSHOT</version>
+    <packaging>pom</packaging>
+
+    <name>Fugue - Online Elasticity for Flink</name>
+    <description>Fugue</description>
+
+    <modules>
+        <module>fugue-common</module>
+        <module>fugue-coordinator</module>
+        <module>fugue-runtime</module>
+        <module>fugue-integration</module>
+        <module>fugue-examples</module>
+    </modules>
+
+    <properties>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <java.version>11</java.version>
+        <flink.version>1.18.0</flink.version>
+        <scala.binary.version>2.12</scala.binary.version>
+        <slf4j.version>1.7.36</slf4j.version>
+        <log4j.version>2.17.1</log4j.version>
+        <junit.version>5.8.2</junit.version>
+        <!-- ITs tagged "patched" need the build-flink.sh patched Flink runtime; excluded from the
+             clean build by default, enabled with `-P patched`. -->
+        <fugue.it.excludedGroups>patched</fugue.it.excludedGroups>
+        <!-- Some @Tag("patched") ITs reference patched-only Flink APIs (e.g. addHostedKeyGroup), so they
+             must be excluded from TEST COMPILATION in the clean build too — not just from execution. The
+             `patched` profile re-includes them (after a ./build-flink.sh fork build). -->
+        <fugue.patched.test.excludes>**/*PatchedITCase.java</fugue.patched.test.excludes>
+        <!-- Patched-only MAIN sources (call patched-only Flink APIs): excluded from the clean build,
+             re-included under `-P patched`. -->
+        <fugue.patched.main.excludes>**/NetworkedStateMigrationService.java</fugue.patched.main.excludes>
+        <maven.compiler.source>11</maven.compiler.source>
+        <maven.compiler.target>11</maven.compiler.target>
+        <!-- JVM opens required to run Flink 1.18 (Pekko/Kryo/RocksDB/MemorySegment) under JDK 17. -->
+        <fugue.jdk17.add-opens>--add-opens=java.base/java.lang=ALL-UNNAMED --add-opens=java.base/java.lang.reflect=ALL-UNNAMED --add-opens=java.base/java.util=ALL-UNNAMED --add-opens=java.base/java.util.concurrent=ALL-UNNAMED --add-opens=java.base/java.io=ALL-UNNAMED --add-opens=java.base/java.nio=ALL-UNNAMED --add-opens=java.base/java.net=ALL-UNNAMED --add-opens=java.base/java.time=ALL-UNNAMED --add-opens=java.base/sun.nio.ch=ALL-UNNAMED</fugue.jdk17.add-opens>
+    </properties>
+
+    <dependencyManagement>
+        <dependencies>
+            <!-- Flink Dependencies -->
+            <dependency>
+                <groupId>org.apache.flink</groupId>
+                <artifactId>flink-java</artifactId>
+                <version>${flink.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.flink</groupId>
+                <artifactId>flink-streaming-java</artifactId>
+                <version>${flink.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.flink</groupId>
+                <artifactId>flink-runtime</artifactId>
+                <version>${flink.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.flink</groupId>
+                <artifactId>flink-clients</artifactId>
+                <version>${flink.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.flink</groupId>
+                <artifactId>flink-statebackend-rocksdb</artifactId>
+                <version>${flink.version}</version>
+            </dependency>
+
+            <!-- Logging -->
+            <dependency>
+                <groupId>org.slf4j</groupId>
+                <artifactId>slf4j-api</artifactId>
+                <version>${slf4j.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.logging.log4j</groupId>
+                <artifactId>log4j-slf4j-impl</artifactId>
+                <version>${log4j.version}</version>
+            </dependency>
+
+            <!-- Testing -->
+            <dependency>
+                <groupId>org.junit.jupiter</groupId>
+                <artifactId>junit-jupiter</artifactId>
+                <version>${junit.version}</version>
+                <scope>test</scope>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.flink</groupId>
+                <artifactId>flink-test-utils</artifactId>
+                <version>${flink.version}</version>
+                <scope>test</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+
+    <build>
+        <pluginManagement>
+            <plugins>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-compiler-plugin</artifactId>
+                    <version>3.8.1</version>
+                    <configuration>
+                        <source>${java.version}</source>
+                        <target>${java.version}</target>
+                        <excludes>
+                            <exclude>${fugue.patched.main.excludes}</exclude>
+                        </excludes>
+                        <testExcludes>
+                            <testExclude>${fugue.patched.test.excludes}</testExclude>
+                        </testExcludes>
+                    </configuration>
+                </plugin>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-surefire-plugin</artifactId>
+                    <version>2.22.2</version>
+                    <configuration>
+                        <!-- Flink 1.18 (Pekko/Kryo/RocksDB, MemorySegment) needs these opens on JDK 17. -->
+                        <argLine>${fugue.jdk17.add-opens}</argLine>
+                    </configuration>
+                </plugin>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-failsafe-plugin</artifactId>
+                    <version>2.22.2</version>
+                    <configuration>
+                        <argLine>${fugue.jdk17.add-opens}</argLine>
+                        <excludedGroups>${fugue.it.excludedGroups}</excludedGroups>
+                    </configuration>
+                </plugin>
+            </plugins>
+        </pluginManagement>
+        <plugins>
+            <!-- Activate failsafe so *ITCase MiniCluster tests run during `mvn verify`. -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-failsafe-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>integration-test</goal>
+                            <goal>verify</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+
+    <profiles>
+        <!-- Enables the @Tag("patched") integration tests, which require the patched Flink runtime
+             installed by ./build-flink.sh (e.g. the in-band migration-barrier plumbing). Run with
+             `mvn -o verify -P patched` after a fork build. -->
+        <profile>
+            <id>patched</id>
+            <properties>
+                <fugue.it.excludedGroups>none</fugue.it.excludedGroups>
+                <!-- Re-include the patched ITs + patched-only main sources (the patched runtime has their APIs). -->
+                <fugue.patched.test.excludes>**/__no_patched_tests_excluded__.java</fugue.patched.test.excludes>
+                <fugue.patched.main.excludes>**/__no_patched_main_excluded__.java</fugue.patched.main.excludes>
+            </properties>
+        </profile>
+    </profiles>
+</project>

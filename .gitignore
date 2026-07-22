@@ -1,0 +1,16 @@
+# Build output
+target/
+dependency-reduced-pom.xml
+
+# IDE / editor
+.idea/
+*.iml
+*.iws
+*.ipr
+.vscode/
+
+# macOS / OS
+.DS_Store
+
+# Logs
+*.log

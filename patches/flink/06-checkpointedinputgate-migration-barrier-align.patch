@@ -1,0 +1,31 @@
+diff --git a/flink-streaming-java/src/main/java/org/apache/flink/streaming/runtime/io/checkpointing/CheckpointedInputGate.java b/flink-streaming-java/src/main/java/org/apache/flink/streaming/runtime/io/checkpointing/CheckpointedInputGate.java
+index a683c746..591703ce 100644
+--- a/flink-streaming-java/src/main/java/org/apache/flink/streaming/runtime/io/checkpointing/CheckpointedInputGate.java
++++ b/flink-streaming-java/src/main/java/org/apache/flink/streaming/runtime/io/checkpointing/CheckpointedInputGate.java
+@@ -34,6 +34,10 @@ import org.apache.flink.runtime.io.network.partition.consumer.InputChannel;
+ import org.apache.flink.runtime.io.network.partition.consumer.InputGate;
+ import org.apache.flink.streaming.runtime.io.StreamTaskNetworkInput;
+ 
++import org.apache.flink.fugue.common.core.MigrationBarrier;
++import org.apache.flink.fugue.runtime.barrier.FugueBarrierAligner;
++import org.apache.flink.runtime.io.network.partition.consumer.CheckpointableInput;
++
+ import org.slf4j.Logger;
+ import org.slf4j.LoggerFactory;
+ 
+@@ -201,6 +205,15 @@ public class CheckpointedInputGate implements PullingAsyncDataInput<BufferOrEven
+                     bufferOrEvent.getChannelInfo());
+         } else if (bufferOrEvent.getEvent().getClass() == EndOfChannelStateEvent.class) {
+             upstreamRecoveryTracker.handleEndOfRecovery(bufferOrEvent.getChannelInfo());
++        } else if (eventClass == MigrationBarrier.class) {
++            // Fugue: align the in-band migration barrier across input channels, blocking each channel
++            // until the barrier has arrived on all of them (the consistent cut of the cutover).
++            if (inputGate instanceof CheckpointableInput) {
++                FugueBarrierAligner.onBarrier(
++                        (MigrationBarrier) bufferOrEvent.getEvent(),
++                        bufferOrEvent.getChannelInfo(),
++                        (CheckpointableInput) inputGate);
++            }
+         }
+         return Optional.of(bufferOrEvent);
+     }
