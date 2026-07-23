@@ -1,6 +1,6 @@
 # Fugue
 
-Implementation of *Fugue: Online and Fine-Grained Elasticity for Distributed Stateful Stream
+Implementation of *Fugue: Online Elasticity for Distributed Stateful Stream
 Processing* on Apache Flink 1.18.
 
 ## Requirements
